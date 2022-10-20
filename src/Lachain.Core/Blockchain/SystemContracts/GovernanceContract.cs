@@ -50,6 +50,7 @@ namespace Lachain.Core.Blockchain.SystemContracts
 
         private readonly StorageVariable _nextValidators;
         private readonly StorageMapping _confirmations;
+        private readonly StorageMapping? _confirmationsReceived;
         private readonly StorageVariable _blockReward;
         private readonly StorageVariable _playersCount;
         private readonly StorageVariable _tsKeys;
@@ -108,6 +109,14 @@ namespace Lachain.Core.Blockchain.SystemContracts
                     ContractRegisterer.GovernanceContract,
                     context.Snapshot.Storage,
                     new BigInteger(9).ToUInt256()
+                );
+            }
+            if (HardforkHeights.IsHardfork_15Active(context.Snapshot.Blocks.GetTotalBlockHeight()))
+            {
+                _confirmationsReceived = new StorageMapping(
+                    ContractRegisterer.GovernanceContract,
+                    context.Snapshot.Storage,
+                    new BigInteger(10).ToUInt256()
                 );
             }
         }
@@ -315,6 +324,13 @@ namespace Lachain.Core.Blockchain.SystemContracts
             }
 
             var gen = GetConsensusGeneration(frame);
+            var sender = MsgSender();
+            if (ConfirmationFromPlayer(sender, gen))
+            {
+                Logger.LogError($"GovernanceContract is halted in KeyGenConfirm: sender {sender.ToHex()} sent confirmation more than once");
+                return ExecutionStatus.ExecutionHalted;
+            }
+            ConfirmationReceivedFromPlayer(sender, gen);
             var votes = GetConfirmations(keyringHash.ToBytes(), gen);
             SetConfirmations(keyringHash.ToBytes(), gen, votes + 1);
 
@@ -365,6 +381,13 @@ namespace Lachain.Core.Blockchain.SystemContracts
             }
 
             var gen = GetConsensusGeneration(frame);
+            var sender = MsgSender();
+            if (ConfirmationFromPlayer(sender, gen))
+            {
+                Logger.LogError($"GovernanceContract is halted in KeyGenConfirm: sender {sender.ToHex()} sent confirmation more than once");
+                return ExecutionStatus.ExecutionHalted;
+            }
+            ConfirmationReceivedFromPlayer(sender, gen);
             var votes = GetConfirmations(keyringHash.ToBytes(), gen);
             SetConfirmations(keyringHash.ToBytes(), gen, votes + 1);
 
@@ -549,6 +572,23 @@ namespace Lachain.Core.Blockchain.SystemContracts
             return decoded
                 .Select(x => x.RLPData)
                 .Select(x => PublicKey.FromBytes(x)).ToList();
+        }
+
+        private bool ConfirmationFromPlayer(UInt160 sender, ulong cycle)
+        {
+            if (_confirmationsReceived is null)
+                return false;
+            var value = _confirmationsReceived.GetValue(sender.ToBytes());
+            if (value is null || value.AsReadOnlySpan().ToUInt64() != cycle)
+                return false;
+            return true;
+        }
+
+        private void ConfirmationReceivedFromPlayer(UInt160 sender, ulong cycle)
+        {
+            if (_confirmationsReceived is null)
+                return;
+            _confirmations.SetValue(sender.ToBytes(), cycle.ToBytes().Concat(new byte[1] {1}).ToArray());
         }
 
         private int GetConfirmations(IEnumerable<byte> key, ulong gen)
