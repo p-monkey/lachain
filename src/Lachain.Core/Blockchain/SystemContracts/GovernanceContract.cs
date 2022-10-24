@@ -418,7 +418,9 @@ namespace Lachain.Core.Blockchain.SystemContracts
             var sender = MsgSender();
             if (ConfirmationFromPlayer(sender, gen))
             {
-                Logger.LogError($"GovernanceContract is halted in KeyGenConfirm: sender {sender.ToHex()} sent confirmation more than once");
+                Logger.LogError(
+                    $"GovernanceContract is halted in KeyGenConfirmWithVerification: sender {sender.ToHex()} sent confirmation more than once"
+                );
                 return ExecutionStatus.ExecutionHalted;
             }
             ConfirmationReceivedFromPlayer(sender, gen);
@@ -444,7 +446,7 @@ namespace Lachain.Core.Blockchain.SystemContracts
 
             if (!MsgSender().IsZero())
             {
-                Logger.LogError("!MsgSender().IsZero(): governance function called by non-zero address");
+                Logger.LogError("!MsgSender().IsZero(): governance function FinishCycle() called by non-zero address");
                 return ExecutionStatus.ExecutionHalted;
             }
             
